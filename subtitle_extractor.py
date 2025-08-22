@@ -97,6 +97,7 @@ def _extract_subtitle_content(url: str, language: str) -> Optional[str]:
             'no_warnings': True,
             'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
             'subtitlesformat': 'vtt/srt/best',  # Prefer VTT or SRT
+            'sleep_interval_requests': 2,
         }
 
         try:
@@ -311,24 +312,8 @@ def _clean_subtitle_text(subtitle_content: str) -> str:
     return text.strip()
 
 
-# Example usage and testing function
-def _test_extractor():
-    """Test function for development purposes."""
-    test_urls = [
-        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",  # Famous Rick Roll
-        "https://www.youtube.com/watch?v=jNQXAC9IVRw",  # Me at the zoo
-    ]
-
-    for url in test_urls:
-        print(f"\nTesting URL: {url}")
-        result = extract_subtitles(url, 'en')
-        if result:
-            print(f"Success! Extracted {len(result)} characters")
-            print(f"Preview: {result[:100]}...")
-        else:
-            print("No subtitles found or error occurred")
-
-
 if __name__ == "__main__":
-    # Run tests if executed directly
-    _test_extractor()
+    # Example usage
+    print("Subtitle Extractor Module")
+    print("Use the extract_subtitles() function to extract subtitles from video URLs.")
+    print("Run tests with: uv run pytest")
