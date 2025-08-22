@@ -74,6 +74,77 @@ def _validate_url(url: str) -> bool:
         return False
 
 
+def _get_ydl_options(language: str, temp_dir: str) -> dict:
+    """
+    Get yt-dlp configuration options for subtitle extraction.
+
+    Args:
+        language (str): Target language code
+        temp_dir (str): Temporary directory path
+
+    Returns:
+        dict: yt-dlp configuration options
+    """
+    return {
+        'writesubtitles': True,
+        'writeautomaticsub': True,  # Fallback to auto-generated
+        'subtitleslangs': [language, f"{language}-*"],  # Include variants
+        'skip_download': True,  # Only extract metadata/subtitles
+        'quiet': True,  # Suppress output
+        'no_warnings': True,
+        'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
+        'subtitlesformat': 'vtt/srt/best',  # Prefer VTT or SRT
+        'sleep_interval_requests': 1,
+    }
+
+
+def _resolve_subtitle_priority(subtitles: dict, automatic_captions: dict, language: str) -> Optional[str]:
+    """
+    Resolve subtitle content using priority fallback logic.
+
+    Priority order:
+    1. Manual subtitles in requested language
+    2. Automatic captions in requested language
+    3. Any available manual subtitle
+    4. Any available automatic caption
+
+    Args:
+        subtitles (dict): Manual subtitles from yt-dlp
+        automatic_captions (dict): Automatic captions from yt-dlp
+        language (str): Requested language code
+
+    Returns:
+        Optional[str]: Subtitle content or None if not found
+    """
+    # Try manual subtitles first in requested language
+    subtitle_content = _get_subtitle_from_info(subtitles, language)
+    if subtitle_content:
+        return subtitle_content
+
+    # Fall back to automatic captions in requested language
+    subtitle_content = _get_subtitle_from_info(automatic_captions, language)
+    if subtitle_content:
+        return subtitle_content
+
+    # If no subtitles for the requested language, try any available manual subtitle
+    if subtitles:
+        first_lang = next(iter(subtitles.keys()))
+        logger.info(f"Requested language '{language}' not found. Using first available manual subtitle: '{first_lang}'")
+        subtitle_content = _get_subtitle_from_info(subtitles, first_lang)
+        if subtitle_content:
+            return subtitle_content
+
+    # Finally, try any available automatic caption
+    if automatic_captions:
+        first_lang = next(iter(automatic_captions.keys()))
+        logger.info(f"No manual subtitles found. Using first available automatic caption: '{first_lang}'")
+        subtitle_content = _get_subtitle_from_info(automatic_captions, first_lang)
+        if subtitle_content:
+            return subtitle_content
+
+    return None
+
+
 def _extract_subtitle_content(url: str, language: str) -> Optional[str]:
     """
     Extract subtitle content using yt-dlp.
@@ -87,37 +158,19 @@ def _extract_subtitle_content(url: str, language: str) -> Optional[str]:
     """
     # Create temporary directory for subtitle files
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Configure yt-dlp options
-        ydl_opts = {
-            'writesubtitles': True,
-            'writeautomaticsub': True,  # Fallback to auto-generated
-            'subtitleslangs': [language, f"{language}-*"],  # Include variants
-            'skip_download': True,  # Only extract metadata/subtitles
-            'quiet': True,  # Suppress output
-            'no_warnings': True,
-            'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
-            'subtitlesformat': 'vtt/srt/best',  # Prefer VTT or SRT
-            'sleep_interval_requests': 2,
-        }
+        ydl_opts = _get_ydl_options(language, temp_dir)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Extract video info first
+                # Extract video info
                 info = ydl.extract_info(url, download=False)
 
-                # Check if subtitles are available
+                # Get subtitle dictionaries
                 subtitles = info.get('subtitles', {})
                 automatic_captions = info.get('automatic_captions', {})
 
-                # Try manual subtitles first
-                subtitle_content = _get_subtitle_from_info(subtitles, language)
-
-                # Fall back to automatic captions
-                if not subtitle_content:
-                    subtitle_content = _get_subtitle_from_info(
-                        automatic_captions, language)
-
-                return subtitle_content
+                # Resolve subtitle content using priority fallback
+                return _resolve_subtitle_priority(subtitles, automatic_captions, language)
 
         except yt_dlp.DownloadError as e:
             logger.error(f"yt-dlp download error: {str(e)}")

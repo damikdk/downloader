@@ -6,20 +6,58 @@ Built with FastAPI for high-performance async request handling.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Optional
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Depends, Security
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, field_validator
 
 from subtitle_extractor import extract_subtitles
 
+# Load environment variables
+load_dotenv()
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Security configuration
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    raise ValueError("API_KEY environment variable is required")
+
+# API Key security scheme
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+
+
+async def verify_api_key(api_key: str = Security(api_key_header)) -> str:
+    """
+    Verify the provided API key matches the configured key.
+
+    Args:
+        api_key: The API key from the X-API-Key header
+
+    Returns:
+        The verified API key
+
+    Raises:
+        HTTPException: If the API key is invalid
+    """
+    if api_key != API_KEY:
+        logger.warning(f"Invalid API key attempt: {api_key[:8]}...")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "X-API-Key"},
+        )
+    return api_key
 
 
 # Lifespan context manager for startup/shutdown
@@ -152,12 +190,16 @@ async def health_check():
           response_model=SubtitleResponse,
           responses={
               400: {"model": ErrorResponse, "description": "Bad request"},
+              401: {"model": ErrorResponse, "description": "Unauthorized - Invalid API key"},
               404: {"model": ErrorResponse, "description": "Subtitles not found"},
               500: {"model": ErrorResponse, "description": "Internal server error"}
           },
           summary="Extract Subtitles",
           description="Extract subtitles from a video URL with optional language specification")
-async def extract_subtitles_endpoint(request: SubtitleRequest):
+async def extract_subtitles_endpoint(
+    request: SubtitleRequest,
+    api_key: str = Depends(verify_api_key)
+):
     """
     Extract subtitles from a video URL.
 
