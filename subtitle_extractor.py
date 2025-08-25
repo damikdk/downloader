@@ -94,7 +94,7 @@ def _get_ydl_options(language: str, temp_dir: str) -> dict:
         'no_warnings': True,
         'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
         'subtitlesformat': 'vtt/srt/best',  # Prefer VTT or SRT
-        'sleep_interval_requests': 1,
+        'sleep_interval_requests': 0.05,
     }
 
 
